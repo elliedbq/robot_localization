@@ -27,6 +27,7 @@ class Particle(object):
             y: the y-coordinate of the hypothesis relative ot the map frame
             theta: the yaw of the hypothesis relative to the map frame
             w: the particle weight (the class does not ensure that particle weights are normalized
+            diff: distance between the closest lidar of robot and particle
     """
 
     def __init__(self, x=0.0, y=0.0, theta=0.0, w=1.0):
@@ -39,6 +40,7 @@ class Particle(object):
         self.theta = theta
         self.x = x
         self.y = y
+        self.diff = 0
 
     def as_pose(self):
         """ A helper function to convert a particle to a geometry_msgs/Pose message """
@@ -230,9 +232,9 @@ class ParticleFilter(Node):
         process_noise = np.array([.1, .1]) # process noise covariance - may need to change
         for p in self.particle_cloud:
             noise = np.random.normal(0, process_noise, size=2)
-            p.orientation.x = p.orientation.x + delta[0] + noise
-            p.orientation.y = p.orientation.y + delta[1] + noise
-            p.orientation.w = p.orientation.w + delta[2] + noise
+            p.x = p.x + delta[0] + noise
+            p.y = p.y + delta[1] + noise
+            p.w = p.w + delta[2] + noise
 
     def resample_particles(self):
         """ Resample the particles according to the new particle weights.
@@ -250,7 +252,18 @@ class ParticleFilter(Node):
             theta: the angle relative to the robot frame for each corresponding reading 
         """
         # TODO: implement this
-        pass
+        # get closest distance for every particle and compare to r and theta for the robot
+
+        # find closest obstacle in robot
+        low = r[0]
+        for dist in r:
+            if dist < low:
+                low = dist
+
+        # compare each particles closest distance to the robot's closest distance
+        for p in self.particle_cloud:
+            p.diff = low - p.get_closest_obstacle_distance(p.x, p.y)
+
 
     def update_initial_pose(self, msg):
         """ Callback function to handle re-initializing the particle filter based on a pose estimate.
@@ -265,8 +278,18 @@ class ParticleFilter(Node):
                       particle cloud around.  If this input is omitted, the odometry will be used """
         if xy_theta is None:
             xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(self.odom_pose)
-        self.particle_cloud = []
+        # self.particle_cloud = []
         # TODO create particles
+        # take into account map data, make sure particles aren't generated in weird spots
+        # take into account the weight of previous particles
+
+        if not self.particle_cloud: # check if cloud is populated
+            self.particle_cloud = []
+            for i in range(0,self.n_particles):
+                pass
+                # randomize
+        else:
+            # randomize based on weights            
 
         self.normalize_particles()
         self.update_robot_pose()
@@ -274,7 +297,15 @@ class ParticleFilter(Node):
     def normalize_particles(self):
         """ Make sure the particle weights define a valid distribution (i.e. sum to 1.0) """
         # TODO: implement this
-        pass
+        # take diff and normalize
+        total_diff = 0
+        for p in self.particle_cloud:
+            total_diff = p.diff + total_diff
+
+        for p in self.particle_cloud:
+            p.w = p.diff/total_diff
+
+        
 
     def publish_particles(self, timestamp):
         msg = ParticleCloud()
