@@ -92,6 +92,9 @@ class ParticleFilter(Node):
         # laser_subscriber listens for data from the lidar
         self.create_subscription(LaserScan, self.scan_topic, self.scan_received, 10)
 
+        # odom_subsciber listens for data from the odometry frame
+        self.create_subscription(Pose, self.odom_frame, self.process_odom, 10)
+
         # this is used to keep track of the timestamps coming from bag files
         # knowing this information helps us set the timestamp of our map -> odom
         # transform correctly
@@ -109,6 +112,9 @@ class ParticleFilter(Node):
         thread = Thread(target=self.loop_wrapper)
         thread.start()
         self.transform_update_timer = self.create_timer(0.05, self.pub_latest_transform)
+
+    def process_odom(self, msg):
+        self.odom_pose = msg
 
     def pub_latest_transform(self):
         """ This function takes care of sending out the map to odom transform """
@@ -187,6 +193,11 @@ class ParticleFilter(Node):
         # TODO: assign the latest pose into self.robot_pose as a geometry_msgs.Pose object
         # just to get started we will fix the robot's pose to always be at the origin
         self.robot_pose = Pose()
+        self.robot_pose.orientation.x = 0
+        self.robot_pose.orientation.y = 0
+        self.robot_pose.orientation.z = 0
+        self.robot_pose.orientation.w = 0 
+
         if hasattr(self, 'odom_pose'):
             self.transform_helper.fix_map_to_odom_transform(self.robot_pose,
                                                             self.odom_pose)
@@ -213,6 +224,15 @@ class ParticleFilter(Node):
             return
 
         # TODO: modify particles using delta
+
+        # for every particle, add on the delta (change in robot pose from last measurement)
+        # and also add on random noise from gausssian distribution
+        process_noise = np.array([.1, .1]) # process noise covariance - may need to change
+        for p in self.particle_cloud:
+            noise = np.random.normal(0, process_noise, size=2)
+            p.orientation.x = p.orientation.x + delta[0] + noise
+            p.orientation.y = p.orientation.y + delta[1] + noise
+            p.orientation.w = p.orientation.w + delta[2] + noise
 
     def resample_particles(self):
         """ Resample the particles according to the new particle weights.
