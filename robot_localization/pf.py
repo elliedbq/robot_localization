@@ -19,6 +19,7 @@ from occupancy_field import OccupancyField
 from helper_functions import TFHelper
 from rclpy.qos import qos_profile_sensor_data
 from angle_helpers import quaternion_from_euler
+from helper_functions import draw_random_sample
 
 
 class Particle(object):
@@ -276,8 +277,19 @@ class ParticleFilter(Node):
         function draw_random_sample in helper_functions.py.
         """
         # make sure the distribution is normalized
-        self.normalize_particles()
+        self.normalize_particles()  # distribution to 1
         # TODO: fill out the rest of the implementation
+
+        # draw_random_sample sets a lot of the actual logic up
+        # need to have all probabilities from weights together - from p.w
+        probabilities = [p.w for p in self.particle_cloud]
+
+        # resampling using draw_random_sample
+        new_cloud = draw_random_sample(
+            self.particle_cloud, probabilities, self.n_particles
+        )
+
+        self.particle_cloud = new_cloud
 
     def update_particles_with_laser(self, r, theta):
         """Updates the particle weights in response to the scan data
@@ -341,7 +353,7 @@ class ParticleFilter(Node):
                 theta = np.random.uniform(-math.pi, math.pi)
                 # randomize
 
-                p = Particle(x=x, y=y, theta=theta, w=initial_w)  # particle
+                p = Particle(x=x, y=y, theta=theta, w=initial_weight)  # particle
                 self.particle_cloud.append(p)
 
         self.normalize_particles()
