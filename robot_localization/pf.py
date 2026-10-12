@@ -217,6 +217,8 @@ class ParticleFilter(Node):
         # first make sure that the particle weights are normalized
         self.normalize_particles()
 
+        # MIGHT NEED TO UPDATE THIS
+
         # TODO: assign the latest pose into self.robot_pose as a geometry_msgs.Pose object
         # just to get started we will fix the robot's pose to always be at the origin
         self.robot_pose = Pose()
@@ -264,6 +266,7 @@ class ParticleFilter(Node):
         process_noise = np.array(
             [0.1, 0.1]
         )  # process noise covariance - may need to change
+        # THIS NEED TO BE REEVALUATED - need ot rething logic with arrays and noise
         for p in self.particle_cloud:
             noise = np.random.normal(0, process_noise, size=2)
             p.x = p.x + delta[0] + noise
@@ -304,6 +307,8 @@ class ParticleFilter(Node):
         for dist in r:
             if dist < low:
                 low = dist
+
+        # NEED TO UPDATE THIS!!!!!
 
         # compare each particles closest distance to the robot's closest distance
         for p in self.particle_cloud:
@@ -363,12 +368,18 @@ class ParticleFilter(Node):
         """Make sure the particle weights define a valid distribution (i.e. sum to 1.0)"""
         # TODO: implement this
         # take diff and normalize
-        total_diff = 0
-        for p in self.particle_cloud:
-            total_diff = p.diff + total_diff
 
-        for p in self.particle_cloud:
-            p.w = p.diff / total_diff
+        # MIGHT NEED TO REEVALUATE
+
+        # original code did not work on first initialization as dividing by zero
+        total_weight = sum(p.w for p in self.particle_cloud)
+        if total_weight > 0.0:  # all except initial
+            for p in self.particle_cloud:
+                p.w = p.w / total_weight  # update
+        else:  # initial
+            uniform_weight = 1.0 / len(self.particle_cloud)
+            for p in self.particle_cloud:
+                p.w = uniform_weight
 
     def publish_particles(self, timestamp):
         msg = ParticleCloud()
