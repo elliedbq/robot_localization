@@ -302,17 +302,57 @@ class ParticleFilter(Node):
         # TODO: implement this
         # get closest distance for every particle and compare to r and theta for the robot
 
-        # find closest obstacle in robot
-        low = r[0]
-        for dist in r:
-            if dist < low:
-                low = dist
+        # Care about current scan data to update the particle weight
+        step = 20  # not every single beam is used, can update this variable
 
-        # NEED TO UPDATE THIS!!!!!
-
-        # compare each particles closest distance to the robot's closest distance
         for p in self.particle_cloud:
-            p.diff = low - p.get_closest_obstacle_distance(p.x, p.y)
+            p.w = 1.0  # initial
+            # loop the lidar readings
+            for i in range(0, len(r), step):
+                dist_xy = r[i]
+                angle = theta[i]
+                # where the particle would hit from this
+                beam_angle = p.theta + angle
+                hit_x = p.x + dist_xy * math.cos(beam_angle)
+                hit_y = p.y + dist_xy * math.sin(beam_angle)
+
+                # compare to actual reading
+                obstacle_dist = self.occupancy_field.get_closest_obstacle_distance(
+                    hit_x, hit_y
+                )
+
+                # then update weight
+                if not np.isnan(
+                    obstacle_dist
+                ):  # CURRENT ISSUE IS - ValueError: The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()
+
+                    # Give that scan a score
+                    o = float(obstacle_dist)
+                    beam_score = 1.0 / (1.0 + o)
+
+                    # Update weight
+                    p.w = p.w * beam_score
+            # need to make sure never a weight of 0 (otherwise division errors)
+            if p.w == 0.0:
+                p.w = 1e-5
+
+        # # find closest obstacle in robot
+        # low = r[0]
+        # for dist in r:
+        #     if dist < low:
+        #         low = dist
+
+        # # NEED TO UPDATE THIS!!!!!
+
+        # # compare each particles closest distance to the robot's closest distance
+
+        # closest_distance = self.occupancy_field.get_closest_obstacle_distance(p.x, p.y)
+
+        # for p in self.particle_cloud:
+        #     p.diff = low - closest_distance
+
+        # # for p in self.particle_cloud:
+        # #     p.diff = low - p.get_closest_obstacle_distance(p.x, p.y)
 
     def update_initial_pose(self, msg):
         """Callback function to handle re-initializing the particle filter based on a pose estimate.
