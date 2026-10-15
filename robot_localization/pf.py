@@ -157,7 +157,9 @@ class ParticleFilter(Node):
 
         You do not need to modify this function, but it is helpful to understand it.
         """
+        print("start loop")
         if self.scan_to_process is None:
+            print("no scan to process")
             return
         msg = self.scan_to_process
 
@@ -185,6 +187,7 @@ class ParticleFilter(Node):
         print("x: {0}, y: {1}, yaw: {2}".format(*new_odom_xy_theta))
 
         if not self.current_odom_xy_theta:
+            print("if statement not passed")
             self.current_odom_xy_theta = new_odom_xy_theta
         elif not self.particle_cloud:
             # now that we have all of the necessary transforms we can update the particle cloud
@@ -228,14 +231,19 @@ class ParticleFilter(Node):
         for p in self.particle_cloud:
             if p.w > weight:
                 weight = p.w
+                print(weight)
                 largest_p = self.particle_cloud.index(p)
                 q = quaternion_from_euler(0, 0, p.theta)
 
-        print(largest_p)
+        print(f"largest_p: {largest_p}")
         print(self.particle_cloud[largest_p].x)
 
         self.robot_pose.position.x = self.particle_cloud[largest_p].x
         self.robot_pose.position.y = self.particle_cloud[largest_p].y
+        self.robot_pose.position.z = 0
+        print(
+            f"robot_positions x: {self.robot_pose.position.x}, y: {self.robot_pose.position.y}"
+        )
 
         self.robot_pose.orientation.x = q[0]
         self.robot_pose.orientation.y = q[1]
@@ -438,6 +446,7 @@ class ParticleFilter(Node):
 
                 p = Particle(x=x, y=y, theta=theta, w=initial_weight)  # particle
                 self.particle_cloud.append(p)
+                print(f"x in particle: {x}, y in particle: {y}")
 
         self.normalize_particles()
         self.update_robot_pose()
