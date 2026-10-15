@@ -8,7 +8,7 @@ from rclpy.time import Time
 from rclpy.node import Node
 from std_msgs.msg import Header
 from sensor_msgs.msg import LaserScan
-from nav2_msgs.msg import ParticleCloud, Particle
+from nav2_msgs.msg import ParticleCloud
 from nav2_msgs.msg import Particle as Nav2Particle
 from geometry_msgs.msg import PoseWithCovarianceStamped, Pose, Point, Quaternion
 from rclpy.duration import Duration
@@ -85,8 +85,8 @@ class ParticleFilter(Node):
         self.odom_frame = "odom"  # the name of the odometry coordinate frame
         self.scan_topic = "scan"  # the topic where we will get laser scans from
 
-        self.n_particles = 300  # the number of particles to use
-
+        self.n_particles = 15  # the number of particles to use
+        self.robot_pose = Pose()
         self.d_thresh = 0.2  # the amount of linear movement before performing an update
         self.a_thresh = (
             math.pi / 6
@@ -221,11 +221,27 @@ class ParticleFilter(Node):
 
         # TODO: assign the latest pose into self.robot_pose as a geometry_msgs.Pose object
         # just to get started we will fix the robot's pose to always be at the origin
-        self.robot_pose = Pose()
-        self.robot_pose.orientation.x = 0
-        self.robot_pose.orientation.y = 0
-        self.robot_pose.orientation.z = 0
-        self.robot_pose.orientation.w = 0
+
+        weight = 0
+        largest_p = self.particle_cloud[0]
+        # find max weight and set its x and y coord to the predicted robot pose
+        for p in self.particle_cloud:
+            if p.w > weight:
+                weight = p.w
+                largest_p = self.particle_cloud.index(p)
+                q = quaternion_from_euler(0, 0, p.theta)
+
+        print(largest_p)
+        print(self.particle_cloud[largest_p].x)
+
+        self.robot_pose.position.x = self.particle_cloud[largest_p].x
+        self.robot_pose.position.y = self.particle_cloud[largest_p].y
+
+        self.robot_pose.orientation.x = q[0]
+        self.robot_pose.orientation.y = q[1]
+        self.robot_pose.orientation.z = q[2]
+        self.robot_pose.orientation.w = q[3]
+        print(self.robot_pose)
 
         if hasattr(self, "odom_pose"):
             self.transform_helper.fix_map_to_odom_transform(
@@ -271,7 +287,7 @@ class ParticleFilter(Node):
             noise = np.random.normal(0, process_noise, size=2)
             p.x = p.x + delta[0] + noise
             p.y = p.y + delta[1] + noise
-            p.w = p.w + delta[2] + noise
+            # p.w = p.w + delta[2] + noise
 
     def resample_particles(self):
         """Resample the particles according to the new particle weights.
@@ -303,56 +319,77 @@ class ParticleFilter(Node):
         # get closest distance for every particle and compare to r and theta for the robot
 
         # Care about current scan data to update the particle weight
-        step = 20  # not every single beam is used, can update this variable
+        # step = 20  # not every single beam is used, can update this variable
 
+        # for p in self.particle_cloud:
+        #     p.w = 1.0  # initial
+        #     # loop the lidar readings
+        #     min_dist = 100
+        #     for i in range(0, len(r), step):
+        #         dist_xy = r[i]
+        #         angle = theta[i]
+        #         # where the particle would hit from this
+        #         beam_angle = p.theta + angle
+        #         hit_x = max(p.x) + dist_xy * math.cos(beam_angle)
+        #         hit_y = max(p.y) + dist_xy * math.sin(beam_angle)
+
+        #         # Have to account for NaN - the readings that are too far away
+        #         print(f"every single distance in scan: {dist_xy}")
+        #         print(f"x: {hit_x}, y: {hit_y}")
+        #         if not np.isnan(hit_x) or np.isnan(hit_y):
+        #             # compare to actual reading
+        #             obstacle_dist = self.occupancy_field.get_closest_obstacle_distance(
+        #                 p.x, p.y
+        #             )
+        #             print(f"obstacle distance: {obstacle_dist}")
+
+        #             # # compare to actual reading
+        #             # obstacle_dist = self.occupancy_field.get_closest_obstacle_distance(
+        #             #     hit_x, hit_y
+        #             # )
+
+        #             # # then update weight
+        #             # for j in obstacle_dist:
+        #             #     if j != "NaN":
+
+        #             # Give that scan a score
+        #             o = float(obstacle_dist)
+        #             beam_score = 1.0 / (1.0 + o)
+
+        #             # Update weight
+        #             p.w = p.w * beam_score
+        #     # need to make sure never a weight of 0 (otherwise division errors)
+        #     if p.w == 0.0:
+        #         p.w = 1e-5
+
+        # # find closest obstacle in robot laser scan
+        low = r[0]
+        for dist in r:
+            if dist < low:
+                low = dist
+        closest_dist_index = r.index(low)
+        dist_xy = r[closest_dist_index]
+        angle = theta[closest_dist_index]
+
+        # find closest obstacle in each particle and compare to laser scan
         for p in self.particle_cloud:
-            p.w = 1.0  # initial
-            # loop the lidar readings
-            for i in range(0, len(r), step):
-                dist_xy = r[i]
-                angle = theta[i]
-                # where the particle would hit from this
-                beam_angle = p.theta + angle
-                hit_x = p.x + dist_xy * math.cos(beam_angle)
-                hit_y = p.y + dist_xy * math.sin(beam_angle)
+            # # compare each particles closest distance to the robot's closest distance
+            # where the particle's closest obstacle is
+            beam_angle = p.theta + angle
+            hit_x = max(p.x) + dist_xy * math.cos(beam_angle)
+            hit_y = max(p.y) + dist_xy * math.sin(beam_angle)
+            closest_dist_laser = [hit_x, hit_y]
+            closest_dist_particle = self.occupancy_field.get_closest_obstacle_distance(
+                p.x, p.y
+            )
 
-                # compare to actual reading
-                obstacle_dist = self.occupancy_field.get_closest_obstacle_distance(
-                    hit_x, hit_y
-                )
-
-                # then update weight
-                if not np.isnan(
-                    obstacle_dist
-                ):  # CURRENT ISSUE IS - ValueError: The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()
-
-                    # Give that scan a score
-                    o = float(obstacle_dist)
-                    beam_score = 1.0 / (1.0 + o)
-
-                    # Update weight
-                    p.w = p.w * beam_score
-            # need to make sure never a weight of 0 (otherwise division errors)
+            diff = abs(closest_dist_particle - closest_dist_laser)
+            p.w = 1 / (sum(diff) / len(diff))
             if p.w == 0.0:
                 p.w = 1e-5
 
-        # # find closest obstacle in robot
-        # low = r[0]
-        # for dist in r:
-        #     if dist < low:
-        #         low = dist
-
-        # # NEED TO UPDATE THIS!!!!!
-
-        # # compare each particles closest distance to the robot's closest distance
-
-        # closest_distance = self.occupancy_field.get_closest_obstacle_distance(p.x, p.y)
-
-        # for p in self.particle_cloud:
-        #     p.diff = low - closest_distance
-
-        # # for p in self.particle_cloud:
-        # #     p.diff = low - p.get_closest_obstacle_distance(p.x, p.y)
+    # for p in self.particle_cloud:
+    #     p.diff = low - p.get_closest_obstacle_distance(p.x, p.y)
 
     def update_initial_pose(self, msg):
         """Callback function to handle re-initializing the particle filter based on a pose estimate.
@@ -385,6 +422,7 @@ class ParticleFilter(Node):
 
         # create cloud
         self.particle_cloud = []
+        print("PARTICLE CLOUD MADE")
 
         # initial weight is same
         initial_weight = 1.0 / self.n_particles
