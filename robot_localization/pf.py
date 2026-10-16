@@ -287,14 +287,21 @@ class ParticleFilter(Node):
 
         # for every particle, add on the delta (change in robot pose from last measurement)
         # and also add on random noise from gausssian distribution
-        process_noise = np.array(
-            [0.1, 0.1]
-        )  # process noise covariance - may need to change
-        # THIS NEED TO BE REEVALUATED - need ot rething logic with arrays and noise
+        # process_noise = np.array(
+        #     [0.1, 0.1]
+        # )  # process noise covariance - may need to change
+
+        sigma_x = 0.05
+        sigma_y = 0.05
+        # sigma_theta = 0.02
+
         for p in self.particle_cloud:
-            noise = np.random.normal(0, process_noise, size=2)
-            p.x = p.x + delta[0] + noise
-            p.y = p.y + delta[1] + noise
+            # noise = np.random.normal(0, process_noise, size=2)
+            noise_x = float(np.random.normal(0, sigma_x))
+            noise_y = float(np.random.normal(0, sigma_y))
+            # noise_theta = float(np.random.normal(0, sigma_theta))
+            p.x = p.x + delta[0] + noise_x
+            p.y = p.y + delta[1] + noise_y
             # p.w = p.w + delta[2] + noise
 
     def resample_particles(self):
@@ -384,15 +391,18 @@ class ParticleFilter(Node):
             # # compare each particles closest distance to the robot's closest distance
             # where the particle's closest obstacle is
             beam_angle = p.theta + angle
-            hit_x = max(p.x) + dist_xy * math.cos(beam_angle)
-            hit_y = max(p.y) + dist_xy * math.sin(beam_angle)
+            hit_x = (p.x) + dist_xy * math.cos(beam_angle)
+            hit_y = (p.y) + dist_xy * math.sin(beam_angle)
             closest_dist_laser = [hit_x, hit_y]
             closest_dist_particle = self.occupancy_field.get_closest_obstacle_distance(
                 p.x, p.y
             )
+            print(f"closest_dist_laser: {closest_dist_laser}")
+            print(f"closest_dist_particle: {closest_dist_particle}")
 
             diff = abs(closest_dist_particle - closest_dist_laser)
             p.w = 1 / (sum(diff) / len(diff))
+
             if p.w == 0.0:
                 p.w = 1e-5
 
