@@ -85,7 +85,7 @@ class ParticleFilter(Node):
         self.odom_frame = "odom"  # the name of the odometry coordinate frame
         self.scan_topic = "scan"  # the topic where we will get laser scans from
 
-        self.n_particles = 15  # the number of particles to use
+        self.n_particles = 300  # the number of particles to use
         self.robot_pose = Pose()
         self.d_thresh = 0.2  # the amount of linear movement before performing an update
         self.a_thresh = (
@@ -200,6 +200,8 @@ class ParticleFilter(Node):
             self.resample_particles()  # resample particles to focus on areas of high density
         # publish particles (so things like rviz can see them)
         self.publish_particles(msg.header.stamp)
+        self.pub_latest_transform()
+        print('publishing particles')
 
     def moved_far_enough_to_update(self, new_odom_xy_theta):
         return (
@@ -249,7 +251,7 @@ class ParticleFilter(Node):
         self.robot_pose.orientation.y = q[1]
         self.robot_pose.orientation.z = q[2]
         self.robot_pose.orientation.w = q[3]
-        print(self.robot_pose)
+        # print(self.robot_pose)
 
         if hasattr(self, "odom_pose"):
             self.transform_helper.fix_map_to_odom_transform(
@@ -293,15 +295,16 @@ class ParticleFilter(Node):
 
         sigma_x = 0.05
         sigma_y = 0.05
-        # sigma_theta = 0.02
+        sigma_theta = 0.02
 
         for p in self.particle_cloud:
             # noise = np.random.normal(0, process_noise, size=2)
             noise_x = float(np.random.normal(0, sigma_x))
             noise_y = float(np.random.normal(0, sigma_y))
-            # noise_theta = float(np.random.normal(0, sigma_theta))
+            noise_theta = float(np.random.normal(0, sigma_theta))
             p.x = p.x + delta[0] + noise_x
             p.y = p.y + delta[1] + noise_y
+            p.theta = p.theta +delta[2] + noise_theta
             # p.w = p.w + delta[2] + noise
 
     def resample_particles(self):
@@ -389,19 +392,25 @@ class ParticleFilter(Node):
         # find closest obstacle in each particle and compare to laser scan
         for p in self.particle_cloud:
             # # compare each particles closest distance to the robot's closest distance
-            # where the particle's closest obstacle is
-            beam_angle = p.theta + angle
-            hit_x = (p.x) + dist_xy * math.cos(beam_angle)
-            hit_y = (p.y) + dist_xy * math.sin(beam_angle)
-            closest_dist_laser = [hit_x, hit_y]
-            closest_dist_particle = self.occupancy_field.get_closest_obstacle_distance(
-                p.x, p.y
-            )
-            print(f"closest_dist_laser: {closest_dist_laser}")
-            print(f"closest_dist_particle: {closest_dist_particle}")
 
-            diff = abs(closest_dist_particle - closest_dist_laser)
-            p.w = 1 / (sum(diff) / len(diff))
+            # # where the particle's closest obstacle is
+            # beam_angle = p.theta + angle
+            # hit_x = (p.x) + dist_xy * math.cos(beam_angle)
+            # hit_y = (p.y) + dist_xy * math.sin(beam_angle)
+            # closest_dist_laser = [hit_x, hit_y]
+            # closest_dist_particle = self.occupancy_field.get_closest_obstacle_distance(
+            #     p.x, p.y
+            # ) # returns a distance not a (x,y) position
+            # print(f"closest_dist_laser: {closest_dist_laser}")
+            # print(f"closest_dist_particle: {closest_dist_particle}")
+
+            # diff = abs(closest_dist_particle - closest_dist_laser)
+            # p.w = 1 / (sum(diff) / len(diff))
+
+
+            closest_obstacle_dist = self.occupancy_field.get_closest_obstacle_distance(p.x, p.y)
+            diff = abs(closest_obstacle_dist - dist_xy)
+            p.w = 1 / diff
 
             if p.w == 0.0:
                 p.w = 1e-5
@@ -435,8 +444,12 @@ class ParticleFilter(Node):
         # only responsible for first iteration of points
 
         # NEED TO UPDATE - HARD Coded - size of map
-        min_x, max_x = 0, 300
-        min_y, max_y = 0, 300
+        # min_x, max_x = 0, self.occupancy_field.map.info.width * self.occupancy_field.map.info.resolution
+        # min_y, max_y = 0, self.occupancy_field.map.info.height * self.occupancy_field.map.info.resolution
+
+        bounds = self.occupancy_field.get_obstacle_bounding_box()
+        min_x, max_x = bounds[0]
+        min_y, max_y = bounds[1]
 
         # create cloud
         self.particle_cloud = []
@@ -456,7 +469,7 @@ class ParticleFilter(Node):
 
                 p = Particle(x=x, y=y, theta=theta, w=initial_weight)  # particle
                 self.particle_cloud.append(p)
-                print(f"x in particle: {x}, y in particle: {y}")
+                # print(f"x in particle: {x}, y in particle: {y}")
 
         self.normalize_particles()
         self.update_robot_pose()
