@@ -210,13 +210,6 @@ class ParticleFilter(Node):
         self.robot_pose.orientation = Quaternion(x=q[0], y=q[1], z=q[2], w=q[3])
         self.robot_pose.position = Point(x=largest_p.x, y=largest_p.y, z=0)
 
-
-
-
-
-
-
-
         if hasattr(self, 'odom_pose'):
             self.transform_helper.fix_map_to_odom_transform(self.robot_pose,
                                                             self.odom_pose)
@@ -258,7 +251,7 @@ class ParticleFilter(Node):
         # standard deviation for noise. adds abs value bc larger movements should have more noise.
         sigma_x = 0.05 + 0.05*abs(dxr)
         sigma_y = 0.05 + 0.05*abs(dyr)
-        sigma_theta = 0.02 + 0.05*abs(dtheta)
+        sigma_theta = 0.1 + 0.05*abs(dtheta)
 
         # bounding box
         bounds = self.occupancy_field.get_obstacle_bounding_box()
@@ -283,7 +276,7 @@ class ParticleFilter(Node):
             p.theta += noise_theta
 
             # check that particle is still in map. if not, give it a new random position. 
-            if not (min_x < p.x < max_x or min_y < p.y < max_y):
+            if not (min_x < p.x < max_x and min_y < p.y < max_y):
                 print('not in map...')
                 p.x = np.random.uniform(min_x, max_x)
                 p.y = np.random.uniform(min_y, max_y)
@@ -340,7 +333,7 @@ class ParticleFilter(Node):
                 good_theta.append(the)
 
         for p in self.particle_cloud:
-            step = 30 # checks scan at every step
+            step = 10 # checks scan at every step
             sum_obs_delta = 0
             for i in range(0, len(good_r), step): 
                 dist_xy = good_r[i]
