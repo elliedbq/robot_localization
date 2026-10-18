@@ -96,7 +96,7 @@ class ParticleFilter(Node):
         self.odom_frame = "odom"  # the name of the odometry coordinate frame
         self.scan_topic = "scan"  # the topic where we will get laser scans from
 
-        self.n_particles = 600  # the number of particles to use
+        self.n_particles = 1000  # the number of particles to use
 
         self.d_thresh = 0.2  # the amount of linear movement before performing an update
         self.a_thresh = (
@@ -242,14 +242,15 @@ class ParticleFilter(Node):
         largest_p = self.particle_cloud[0] # as fallback
         for i, p in enumerate(self.particle_cloud):
             weight = p.w
-            x_min = p.x - surrounding_radius
-            x_max = p.x + surrounding_radius
-            y_min = p.y - surrounding_radius
-            y_max = p.y + surrounding_radius
-            for j, p2 in enumerate(self.particle_cloud):
-                if i != j:
-                    if x_min < p2.x < x_max and y_min < p2.y < y_max:
-                        weight += p2.w
+            # radius cluster thing
+            # x_min = p.x - surrounding_radius
+            # x_max = p.x + surrounding_radius
+            # y_min = p.y - surrounding_radius
+            # y_max = p.y + surrounding_radius
+            # for j, p2 in enumerate(self.particle_cloud):
+            #     if i != j:
+            #         if x_min < p2.x < x_max and y_min < p2.y < y_max:
+            #             weight += p2.w
             if weight > max_weight:
                 largest_p = p
                 max_weight = weight
@@ -328,13 +329,13 @@ class ParticleFilter(Node):
             noise_y = float(np.random.normal(0, sigma_y))
             noise_theta = float(np.random.normal(0, sigma_theta))
     
-            dxr += noise_x
-            dyr += noise_y
-            dtheta += noise_theta
+            noisy_dxr = dxr + noise_x
+            noisy_dyr = dyr + noise_y
+            noisy_dtheta = dtheta + noise_theta
 
-            p.x = p.x + math.cos(p.theta) * dxr - math.sin(p.theta) * dyr
-            p.y = p.y + math.sin(p.theta) * dxr + math.cos(p.theta) * dyr
-            p.theta = p.theta + dtheta
+            p.x = p.x + math.cos(p.theta) * noisy_dxr - math.sin(p.theta) * noisy_dyr
+            p.y = p.y + math.sin(p.theta) * noisy_dxr + math.cos(p.theta) * noisy_dyr
+            p.theta = p.theta + noisy_dtheta
             # will theta get too big? idk
 
 
@@ -361,14 +362,20 @@ class ParticleFilter(Node):
         # need to have all probabilities from weights together - from p.w
         probabilities = [p.w for p in self.particle_cloud]
 
-        # extra_random = self.n_particles/10 # make ten percent of the new particles completely random
+        random_injection = int(self.n_particles/20) # make five percent of the new particles completely random
         # potentially add completely random particles ^
+
+        sample_size = int(self.n_particles-random_injection)
 
         # resampling using draw_random_sample.
         # noise for new particles is added in the odometry displacement. (update_particles_with_odom)
         new_cloud = draw_random_sample(
-            self.particle_cloud, probabilities, self.n_particles
+            self.particle_cloud, probabilities, sample_size
         )
+
+        for _ in range(0, random_injection):
+            p = self.create_random_particle()
+            new_cloud.append(p)
 
         self.particle_cloud = new_cloud
         # wipe weights 
@@ -394,7 +401,7 @@ class ParticleFilter(Node):
                 good_theta.append(the)
 
         for p in self.particle_cloud:
-            step = 10  # checks scan at every step
+            step = 3  # checks scan at every step
             p.log_weight = 0
             for i in range(0, len(good_r), step):
                 dist_xy = good_r[i]
@@ -409,10 +416,15 @@ class ParticleFilter(Node):
                 delta_obs = self.occupancy_field.get_closest_obstacle_distance(
                     hit_x, hit_y
                 )
-                error = -0.5 * ((delta_obs/self.sigma_hit)**2)
+                if math.isfinite(delta_obs):
+                    # delta_obs = min(delta_obs, 0.5) # cap on laser scan (any delta too large does not get kept)
+                    error = -0.5 * ((delta_obs/self.sigma_hit)**2)
+                else:
+                    error = 0
 
                 # log weight. no need to take into account old weight bc it needs to be reset each sample anyway
                 p.log_weight += error
+            print(p.log_weight) # why is the log weight nan...
 
         self.normalize_particles()
 
@@ -454,11 +466,7 @@ class ParticleFilter(Node):
             # equally distribute
             print('uniform distribution')
             for _ in range(0, self.n_particles):
-                x = np.random.uniform(min_x, max_x)
-                y = np.random.uniform(min_y, max_y)
-                theta = np.random.uniform(-math.pi, math.pi)
-
-                p = Particle(x=x, y=y, theta=theta, w=initial_weight)  # create particle
+                p = self.create_random_particle() # create particle
                 self.particle_cloud.append(p)
         else:
             # normal distribution over xy_theta
@@ -477,6 +485,23 @@ class ParticleFilter(Node):
         self.publish_particles(timestamp)
         print("particle cloud initialized")
 
+    def create_random_particle(self, weight=None):
+        # find map size
+        bounds = self.occupancy_field.get_obstacle_bounding_box()
+        min_x, max_x = bounds[0]
+        min_y, max_y = bounds[1]
+
+
+        x = np.random.uniform(min_x, max_x)
+        y = np.random.uniform(min_y, max_y)
+        theta = np.random.uniform(-math.pi, math.pi)
+
+        if weight is None:
+            weight = 1/self.n_particles
+
+        p = Particle(x=x, y=y, theta=theta, w=weight)  # create particle
+        return p
+
 
     def normalize_particles(self):
         """Make sure the particle weights define a valid distribution (i.e. sum to 1.0)"""
@@ -485,6 +510,8 @@ class ParticleFilter(Node):
         total_weight = sum(p.w for p in self.particle_cloud)
         if math.isclose(total_weight, 1.0):  # check if it is already normalized
             return
+        # if not self.particle_cloud:
+        #     return
 
         # logic within this if statement may be off - are we dividing by the right thing?
 
