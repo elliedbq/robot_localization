@@ -75,3 +75,35 @@ def test_bounding_box_logic(pf_node):
 
     # Checks particle_cloud still same amount
     assert len(pf_node.particle_cloud) == 100
+
+
+# We had issues with p.log_weight being Nan
+def test_nan_log_weights(pf_node):
+    """Ensure p.log_weight does not become NaN when out of bounds."""
+    # Test only a few particles
+    p1 = Particle(x=0.0, y=0.0, theta=0.0)
+    p2 = Particle(x=10.0, y=10.0, theta=math.pi / 2)
+    pf_node.particle_cloud = [p1, p2]
+
+    # Occupancy Fields
+    pf_node.occupancy_field.get_closest_obstacle_distance.side_effect = [
+        float("nan"),
+        None,
+        0.15,
+        float("nan"),
+    ]
+
+    # Scan data (4 beams)
+    r = [1.0, 2.0, 1.5, 3.0]
+    theta = [0.0, 0.1, 0.2, 0.3]
+
+    # Run  laser update step,which includes log_weight
+    pf_node.update_particles_with_laser(r, theta)
+
+    # Check  p.log_weight is not None and not NaN for each particle
+    for i, p in enumerate(pf_node.particle_cloud):
+        assert p.log_weight is not None, f"Particle {i} log_weight was not computed"
+        assert not math.isnan(p.log_weight), f"Particle {i} log_weight evaluated to NaN"
+
+
+# check if p.log_weight = nan
