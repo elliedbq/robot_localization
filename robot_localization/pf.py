@@ -62,9 +62,9 @@ class Particle(object):
         if not, re positions particle somewhere random"""
 
         if not (min_x < self.x < max_x and min_y < self.y < max_y):
-            x = np.random.uniform(min_x, max_x)
-            y = np.random.uniform(min_y, max_y)
-            theta = np.random.uniform(-math.pi, math.pi)   
+            self.x = np.random.uniform(min_x, max_x)
+            self.y = np.random.uniform(min_y, max_y)
+            self.theta = np.random.uniform(-math.pi, math.pi)   
 
 
 class ParticleFilter(Node):
@@ -105,7 +105,7 @@ class ParticleFilter(Node):
 
         # TODO: define additional constants if needed
 
-        self.sigma_hit = 0.2  # should check this number. standard deviation for obstacle delta to particle weight
+        self.sigma_hit = 0.05  # should check this number. standard deviation for obstacle delta to particle weight
 
         print("new pf.py running")
         # pose_listener responds to selection of a new approximate robot location (for instance using rviz)
@@ -239,6 +239,7 @@ class ParticleFilter(Node):
         # find weight of each particle but take into account the weight of surrounding particles as well
         surrounding_radius = .2 # random number rn
         max_weight = 0
+        largest_p = self.particle_cloud[0] # as fallback
         for i, p in enumerate(self.particle_cloud):
             weight = p.w
             x_min = p.x - surrounding_radius
@@ -309,18 +310,10 @@ class ParticleFilter(Node):
         )
 
         # standard deviation for noise. adds abs value bc larger movements should have more noise.
-        sigma_x = 0.05 + 0.05 * abs(dxr)
-        sigma_y = 0.05 + 0.05 * abs(dyr)
-        sigma_theta = 0.1 + 0.05 * abs(dtheta)
+        sigma_x = 0.01 + 0.1 * abs(dxr)
+        sigma_y = 0.01 + 0.1 * abs(dyr)
+        sigma_theta = 0.01 + 0.1 * abs(dtheta)
 
-        # add noise to local movement step in odom frame
-        noise_x = float(np.random.normal(0, sigma_x))
-        noise_y = float(np.random.normal(0, sigma_y))
-        noise_theta = float(np.random.normal(0, sigma_theta))
-
-        dxr += noise_x
-        dyr += noise_y
-        dtheta += noise_theta
 
         # bounding box
         bounds = self.occupancy_field.get_obstacle_bounding_box()
@@ -330,6 +323,15 @@ class ParticleFilter(Node):
         # update particle with delta in world frame
         # - need to add rotation matrix in order to account for original heading of particle
         for p in self.particle_cloud:
+            # add noise to local movement step in odom frame
+            noise_x = float(np.random.normal(0, sigma_x))
+            noise_y = float(np.random.normal(0, sigma_y))
+            noise_theta = float(np.random.normal(0, sigma_theta))
+    
+            dxr += noise_x
+            dyr += noise_y
+            dtheta += noise_theta
+
             p.x = p.x + math.cos(p.theta) * dxr - math.sin(p.theta) * dyr
             p.y = p.y + math.sin(p.theta) * dxr + math.cos(p.theta) * dyr
             p.theta = p.theta + dtheta
@@ -342,6 +344,9 @@ class ParticleFilter(Node):
                 p.x = np.random.uniform(min_x, max_x)
                 p.y = np.random.uniform(min_y, max_y)
                 p.theta = np.random.uniform(-math.pi, math.pi)
+
+
+        print(f'total particles: {len(self.particle_cloud)}')
 
     def resample_particles(self):
         """Resample the particles according to the new particle weights.
@@ -390,7 +395,7 @@ class ParticleFilter(Node):
 
         for p in self.particle_cloud:
             step = 10  # checks scan at every step
-            sum_obs_delta = 0
+            p.log_weight = 0
             for i in range(0, len(good_r), step):
                 dist_xy = good_r[i]
                 angle = good_theta[i]
@@ -401,12 +406,13 @@ class ParticleFilter(Node):
 
                 # compare obstacle location to occupancy field to see if
                 # robots expectation of an obstacle matches to actual obstacle
-                sum_obs_delta += self.occupancy_field.get_closest_obstacle_distance(
+                delta_obs = self.occupancy_field.get_closest_obstacle_distance(
                     hit_x, hit_y
                 )
+                error = -0.5 * ((delta_obs/self.sigma_hit)**2)
 
-            # log weight. no need to take into account old weight bc it needs to be reset each sample anyway
-            p.log_weight = -0.5 * ((sum_obs_delta / self.sigma_hit) ** 2)
+                # log weight. no need to take into account old weight bc it needs to be reset each sample anyway
+                p.log_weight += error
 
         self.normalize_particles()
 
@@ -446,6 +452,7 @@ class ParticleFilter(Node):
 
         if xy_theta is None:
             # equally distribute
+            print('uniform distribution')
             for _ in range(0, self.n_particles):
                 x = np.random.uniform(min_x, max_x)
                 y = np.random.uniform(min_y, max_y)
@@ -455,12 +462,14 @@ class ParticleFilter(Node):
                 self.particle_cloud.append(p)
         else:
             # normal distribution over xy_theta
+            print('yay normal distribution')
             for _ in range(0, self.n_particles):
                 x = np.random.normal(xy_theta[0], sigma_x)
                 y = np.random.normal(xy_theta[1], sigma_y)
                 theta = np.random.normal(xy_theta[2], sigma_theta) 
 
                 p = Particle(x=x, y=y, theta=theta, w=initial_weight)  # create particle
+                p.check_pose(min_x, max_x, min_y, max_y)
                 self.particle_cloud.append(p)
 
         # self.normalize_particles() - not needed? in initialization, all the weights are already equal
@@ -474,7 +483,7 @@ class ParticleFilter(Node):
         # TODO: implement this
 
         total_weight = sum(p.w for p in self.particle_cloud)
-        if math.is_close(total_weight, 1.0):  # check if it is already normalized
+        if math.isclose(total_weight, 1.0):  # check if it is already normalized
             return
 
         # logic within this if statement may be off - are we dividing by the right thing?
@@ -484,9 +493,9 @@ class ParticleFilter(Node):
             for p in self.particle_cloud:
                 p.raw_weight = math.exp(p.log_weight - max_log_weight)
 
-            total_log_weight = sum(p.log_weight for p in self.particle_cloud)
+            total_raw_weight = sum(p.raw_weight for p in self.particle_cloud)
             for p in self.particle_cloud:
-                p.w = p.raw_weight / total_log_weight
+                p.w = p.raw_weight / total_raw_weight
         else:
             # if not, divide each weight by total_weight
             for p in self.particle_cloud:
