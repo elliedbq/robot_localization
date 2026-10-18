@@ -43,6 +43,7 @@ class Particle(object):
         self.theta = theta
         self.x = x
         self.y = y
+
         self.raw_weight = None
         self.log_weight = None
 
@@ -55,6 +56,15 @@ class Particle(object):
         )
 
     # TODO: define additional helper functions if needed
+
+    def check_pose(self, min_x, max_x, min_y, max_y):
+        """checks if particle is within bounding box
+        if not, re positions particle somewhere random"""
+
+        if not (min_x < self.x < max_x and min_y < self.y < max_y):
+            x = np.random.uniform(min_x, max_x)
+            y = np.random.uniform(min_y, max_y)
+            theta = np.random.uniform(-math.pi, math.pi)   
 
 
 class ParticleFilter(Node):
@@ -98,7 +108,6 @@ class ParticleFilter(Node):
         self.sigma_hit = 0.2  # should check this number. standard deviation for obstacle delta to particle weight
 
         print("new pf.py running")
-        print("bruh wtf")
         # pose_listener responds to selection of a new approximate robot location (for instance using rviz)
         self.create_subscription(
             PoseWithCovarianceStamped, "initialpose", self.update_initial_pose, 10
@@ -220,12 +229,30 @@ class ParticleFilter(Node):
         # just to get started we will fix the robot's pose to always be at the origin
         self.robot_pose = Pose()
 
-        weight = 0
-        # find max weight and set its x and y coord to the predicted robot pose
-        for p in self.particle_cloud:
-            if p.w > weight:
-                weight = p.w
+                # weight = 0
+                # # find max weight and set its x and y coord to the predicted robot pose
+                # for p in self.particle_cloud:
+                #     if p.w > weight:
+                #         weight = p.w
+                #         largest_p = p
+
+        # find weight of each particle but take into account the weight of surrounding particles as well
+        surrounding_radius = .2 # random number rn
+        max_weight = 0
+        for i, p in enumerate(self.particle_cloud):
+            weight = p.w
+            x_min = p.x - surrounding_radius
+            x_max = p.x + surrounding_radius
+            y_min = p.y - surrounding_radius
+            y_max = p.y + surrounding_radius
+            for j, p2 in enumerate(self.particle_cloud):
+                if i != j:
+                    if x_min < p2.x < x_max and y_min < p2.y < y_max:
+                        weight += p2.w
+            if weight > max_weight:
                 largest_p = p
+                max_weight = weight
+            
 
         print("set robot pose")
         q = quaternion_from_euler(0, 0, largest_p.theta)
@@ -286,6 +313,15 @@ class ParticleFilter(Node):
         sigma_y = 0.05 + 0.05 * abs(dyr)
         sigma_theta = 0.1 + 0.05 * abs(dtheta)
 
+        # add noise to local movement step in odom frame
+        noise_x = float(np.random.normal(0, sigma_x))
+        noise_y = float(np.random.normal(0, sigma_y))
+        noise_theta = float(np.random.normal(0, sigma_theta))
+
+        dxr += noise_x
+        dyr += noise_y
+        dtheta += noise_theta
+
         # bounding box
         bounds = self.occupancy_field.get_obstacle_bounding_box()
         min_x, max_x = bounds[0]
@@ -299,14 +335,6 @@ class ParticleFilter(Node):
             p.theta = p.theta + dtheta
             # will theta get too big? idk
 
-            # add noise
-            noise_x = float(np.random.normal(0, sigma_x))
-            noise_y = float(np.random.normal(0, sigma_y))
-            noise_theta = float(np.random.normal(0, sigma_theta))
-
-            p.x += noise_x
-            p.y += noise_y
-            p.theta += noise_theta
 
             # check that particle is still in map. if not, give it a new random position.
             if not (min_x < p.x < max_x and min_y < p.y < max_y):
@@ -338,9 +366,11 @@ class ParticleFilter(Node):
         )
 
         self.particle_cloud = new_cloud
+        # wipe weights 
+        for p in self.particle_cloud:
+            p.w = 1/self.n_particles
+            p.log_weight = None
 
-        # normalize particles again bc draw_random_sample copies the weight of the particles
-        self.normalize_particles()
         self.publish_particles(self.last_scan_timestamp)
 
     def update_particles_with_laser(self, r, theta):
@@ -393,10 +423,11 @@ class ParticleFilter(Node):
         xy_theta: a triple consisting of the mean x, y, and theta (yaw) to initialize the
                   particle cloud around.  If this input is omitted, the odometry will be used
         """
-        if xy_theta is None:
-            xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(
-                self.odom_pose
-            )
+        # odom is always (0,0,0)??
+                # if xy_theta is None:
+                #     xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(
+                #         self.odom_pose
+                #     )
         self.particle_cloud = []
         # TODO create particles
 
@@ -408,32 +439,47 @@ class ParticleFilter(Node):
         # initial weight is same
         initial_weight = 1.0 / self.n_particles
 
-        print("particle cloud initialized")
+        # set standard deviation for making particles around xy_theta
+        sigma_x = .2
+        sigma_y = .2
+        sigma_theta = .2
 
-        for _ in range(0, self.n_particles):
-            # equally randomize across map. how to account for dead areas and initial pose estimate?
-            x = np.random.uniform(min_x, max_x)
-            y = np.random.uniform(min_y, max_y)
-            theta = np.random.uniform(-math.pi, math.pi)
+        if xy_theta is None:
+            # equally distribute
+            for _ in range(0, self.n_particles):
+                x = np.random.uniform(min_x, max_x)
+                y = np.random.uniform(min_y, max_y)
+                theta = np.random.uniform(-math.pi, math.pi)
 
-            p = Particle(x=x, y=y, theta=theta, w=initial_weight)  # create particle
-            self.particle_cloud.append(p)
+                p = Particle(x=x, y=y, theta=theta, w=initial_weight)  # create particle
+                self.particle_cloud.append(p)
+        else:
+            # normal distribution over xy_theta
+            for _ in range(0, self.n_particles):
+                x = np.random.normal(xy_theta[0], sigma_x)
+                y = np.random.normal(xy_theta[1], sigma_y)
+                theta = np.random.normal(xy_theta[2], sigma_theta) 
+
+                p = Particle(x=x, y=y, theta=theta, w=initial_weight)  # create particle
+                self.particle_cloud.append(p)
 
         # self.normalize_particles() - not needed? in initialization, all the weights are already equal
         self.update_robot_pose()
         self.publish_particles(timestamp)
+        print("particle cloud initialized")
+
 
     def normalize_particles(self):
         """Make sure the particle weights define a valid distribution (i.e. sum to 1.0)"""
         # TODO: implement this
 
         total_weight = sum(p.w for p in self.particle_cloud)
-        if total_weight == 1:  # check if it is already normalized
+        if math.is_close(total_weight, 1.0):  # check if it is already normalized
             return
 
         # logic within this if statement may be off - are we dividing by the right thing?
 
-        if p.log_weight:
+        if self.particle_cloud[0].log_weight is not None:
             max_log_weight = max(p.log_weight for p in self.particle_cloud)
             for p in self.particle_cloud:
                 p.raw_weight = math.exp(p.log_weight - max_log_weight)
