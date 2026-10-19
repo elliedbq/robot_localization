@@ -55,12 +55,15 @@ class Particle(object):
             orientation=Quaternion(x=q[0], y=q[1], z=q[2], w=q[3]),
         )
 
-    # TODO: define additional helper functions if needed
-
     def check_pose(self, min_x, max_x, min_y, max_y):
         """checks if particle is within bounding box
-        if not, re positions particle somewhere random"""
-
+        if not, re positions particle somewhere random inside the bounding box
+        Attributes:
+            min_x: minimum x value of the bounding box
+            max_x: maximum x value of the bounding box
+            min_y: minimum y value of the bounding box
+            max_y: maximum y value of the bounding box
+        """
         if not (min_x < self.x < max_x and min_y < self.y < max_y):
             self.x = np.random.uniform(min_x, max_x)
             self.y = np.random.uniform(min_y, max_y)
@@ -103,11 +106,7 @@ class ParticleFilter(Node):
             math.pi / 6
         )  # the amount of angular movement before performing an update
 
-        # TODO: define additional constants if needed
-
-        self.sigma_hit = 0.3  # should check this number. standard deviation for obstacle delta to particle weight
-
-        print("new pf.py running")
+        print("pf.py running")
         # pose_listener responds to selection of a new approximate robot location (for instance using rviz)
         self.create_subscription(
             PoseWithCovarianceStamped, "initialpose", self.update_initial_pose, 10
@@ -162,8 +161,6 @@ class ParticleFilter(Node):
         """This is the main run_loop of our particle filter.  It checks to see if
         any scans are ready and to be processed and will call several helper
         functions to complete the processing.
-
-        You do not need to modify this function, but it is helpful to understand it.
         """
         if self.scan_to_process is None:
             return
@@ -207,6 +204,12 @@ class ParticleFilter(Node):
         self.pub_latest_transform()
 
     def moved_far_enough_to_update(self, new_odom_xy_theta):
+        """Checks if the robot has moved far enough for us to update
+        the particles and predict a new robot pose
+        Attributes:
+            new_odom_xy_theta: (x,y,theta) tuple representing the new robot position
+                in the odom frame
+        """
         return (
             math.fabs(new_odom_xy_theta[0] - self.current_odom_xy_theta[0])
             > self.d_thresh
@@ -225,37 +228,17 @@ class ParticleFilter(Node):
         # first make sure that the particle weights are normalized
         self.normalize_particles()
 
-        # TODO: assign the latest pose into self.robot_pose as a geometry_msgs.Pose object
-        # just to get started we will fix the robot's pose to always be at the origin
         self.robot_pose = Pose()
 
-        # weight = 0
-        # # find max weight and set its x and y coord to the predicted robot pose
-        # for p in self.particle_cloud:
-        #     if p.w > weight:
-        #         weight = p.w
-        #         largest_p = p
-
-        # find weight of each particle but take into account the weight of surrounding particles as well
-        surrounding_radius = 0.2  # random number rn
         max_weight = 0
         largest_p = self.particle_cloud[0]  # as fallback
-        for i, p in enumerate(self.particle_cloud):
-            weight = p.w
-            # radius cluster thing
-            # x_min = p.x - surrounding_radius
-            # x_max = p.x + surrounding_radius
-            # y_min = p.y - surrounding_radius
-            # y_max = p.y + surrounding_radius
-            # for j, p2 in enumerate(self.particle_cloud):
-            #     if i != j:
-            #         if x_min < p2.x < x_max and y_min < p2.y < y_max:
-            #             weight += p2.w
-            if weight > max_weight:
+        # find max weight and set its x and y coord as the predicted robot pose
+        for p in self.particle_cloud:
+            if p.w > max_weight:
+                max_weight = p.w
                 largest_p = p
-                max_weight = weight
 
-        print("set robot pose")
+        # using (x,y,theta) find the quaternion to represent the robot pose
         q = quaternion_from_euler(0, 0, largest_p.theta)
         self.robot_pose.orientation = Quaternion(x=q[0], y=q[1], z=q[2], w=q[3])
         self.robot_pose.position = Point(x=largest_p.x, y=largest_p.y, z=0)
@@ -294,7 +277,6 @@ class ParticleFilter(Node):
             self.current_odom_xy_theta = new_odom_xy_theta
             return
 
-        # TODO: modify particles using delta
         # particles have p.x and p.y and p.theta in world frame
         # robot moves in odom frame and delta is the change in odom frame
 
@@ -340,11 +322,7 @@ class ParticleFilter(Node):
             )
 
             # check that particle is still in map. if not, give it a new random position.
-            if not (min_x < p.x < max_x and min_y < p.y < max_y):
-                print("not in map...")
-                p.x = np.random.uniform(min_x, max_x)
-                p.y = np.random.uniform(min_y, max_y)
-                p.theta = np.random.uniform(-math.pi, math.pi)
+            p.check_pose(min_x, max_x, min_y, max_y)
 
         print(f"total particles: {len(self.particle_cloud)}")
 
@@ -356,7 +334,6 @@ class ParticleFilter(Node):
         """
         # make sure the distribution is normalized
         self.normalize_particles()
-        # TODO: fill out the rest of the implementation
         # draw_random_sample sets a lot of the actual logic up
         # need to have all probabilities from weights together - from p.w
         probabilities = [p.w for p in self.particle_cloud]
@@ -364,8 +341,7 @@ class ParticleFilter(Node):
         # random_injection = 0
         random_injection = int(
             self.n_particles / 8
-        )  # make ten percent of the new particles completely random
-        # potentially add completely random particles ^
+        )  # make 12.5 percent of the new particles completely random
 
         sample_size = int(self.n_particles - random_injection)
 
@@ -390,8 +366,6 @@ class ParticleFilter(Node):
         r: the distance readings to obstacles
         theta: the angle relative to the robot frame for each corresponding reading
         """
-        # TODO: implement this
-
         # throw out non finite data points from laser scan
         good_r = []
         good_theta = []
@@ -399,6 +373,8 @@ class ParticleFilter(Node):
             if math.isfinite(rad) and rad > 0:
                 good_r.append(rad)
                 good_theta.append(the)
+
+        sigma_hit = 0.3  # standard deviation for obstacle delta to particle weight
 
         for p in self.particle_cloud:
             step = 3  # checks scan at every step
@@ -420,13 +396,13 @@ class ParticleFilter(Node):
                     delta_obs = min(
                         delta_obs, 1.0
                     )  # cap on laser scan (any delta too large does not get kept)
-                    error = -0.5 * ((delta_obs / self.sigma_hit) ** 2)
+                    error = -0.5 * ((delta_obs / sigma_hit) ** 2)
                 else:
                     error = -2.0
 
                 # log weight. no need to take into account old weight bc it needs to be reset each sample anyway
                 p.log_weight += error
-            print(p.log_weight)  # why is the log weight nan...
+            # print(p.log_weight)  
 
         self.normalize_particles()
 
@@ -443,13 +419,7 @@ class ParticleFilter(Node):
         xy_theta: a triple consisting of the mean x, y, and theta (yaw) to initialize the
                   particle cloud around.  If this input is omitted, the odometry will be used
         """
-        # odom is always (0,0,0)??
-        # if xy_theta is None:
-        #     xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(
-        #         self.odom_pose
-        #     )
         self.particle_cloud = []
-        # TODO create particles
 
         # find map size
         bounds = self.occupancy_field.get_obstacle_bounding_box()
@@ -488,6 +458,12 @@ class ParticleFilter(Node):
         print("particle cloud initialized")
 
     def create_random_particle(self, weight=None):
+        """Creates and returns a particle that is somewhere uniformly random
+        inside the bounding box.
+        Attribute:
+            weight: weight of the particle, auto set to 1/n_particles for a
+                uniform weight.
+        """
         # find map size
         bounds = self.occupancy_field.get_obstacle_bounding_box()
         min_x, max_x = bounds[0]
@@ -505,13 +481,10 @@ class ParticleFilter(Node):
 
     def normalize_particles(self):
         """Make sure the particle weights define a valid distribution (i.e. sum to 1.0)"""
-        # TODO: implement this
-
         total_weight = sum(p.w for p in self.particle_cloud)
 
-        # logic within this if statement may be off - are we dividing by the right thing?
-
         if self.particle_cloud[0].log_weight is not None:
+            # adjusts the log weight to the raw weight and then a normalized weight
             max_log_weight = max(p.log_weight for p in self.particle_cloud)
             for p in self.particle_cloud:
                 p.raw_weight = math.exp(p.log_weight - max_log_weight)
@@ -520,13 +493,14 @@ class ParticleFilter(Node):
             for p in self.particle_cloud:
                 p.w = p.raw_weight / total_raw_weight
         else:
-            # if not, divide each weight by total_weight
+            # if no log weight, divide each weight by total_weight
             for p in self.particle_cloud:
                 p.w = p.w / total_weight
 
         print("particles normalized")
 
     def publish_particles(self, timestamp):
+        """publishes particles"""
         msg = ParticleCloud()
         msg.header.frame_id = self.map_frame
         msg.header.stamp = timestamp
@@ -535,6 +509,7 @@ class ParticleFilter(Node):
         self.particle_pub.publish(msg)
 
     def scan_received(self, msg):
+        """when scan is recieved, sets new scan as the scan to be processed"""
         self.last_scan_timestamp = msg.header.stamp
         # we throw away scans until we are done processing the previous scan
         # self.scan_to_process is set to None in the run_loop
