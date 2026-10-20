@@ -58,7 +58,7 @@ def test_particles_standard_weights(pf_node):
 
 # Now test with log_weight
 def test_log_weights(pf_node):
-    """Check log_weight normalization functions correctly and sums to 1."""
+    """Check log_weight normalization functions correctly and the sum equals 1."""
     p1 = Particle()
     p2 = Particle()
 
@@ -168,5 +168,5 @@ def test_nan_log_weights(pf_node):
 
     # Check p.log_weight is not None and not NaN for each particle
     for i, p in enumerate(pf_node.particle_cloud):
-        assert p.log_weight is not None, f"Particle {i} log_weight was not computed"
-        assert not math.isnan(p.log_weight), f"Particle {i} log_weight evaluated to NaN"
+        assert p.log_weight is not None, f"Particle {i} log_weight not computed"
+        assert not math.isnan(p.log_weight), f"Particle {i} log_weight is NaN"
