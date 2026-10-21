@@ -34,7 +34,7 @@ Using the particle with the highest confidence value (weight), approximate where
 Using the weights (probability) of each particle being correct position of the robot, resample the particles, adding a random injection of particles in case of a large convergence, rooms, or symmetrical obstacles.
 
 ### More Details
-Look at report: [report](report.pdf)
+Look at report: [report](report.MD)
 
 ## How to Run
 
