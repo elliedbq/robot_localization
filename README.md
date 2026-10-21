@@ -2,6 +2,8 @@
 
 Making a particle filter that uses a given world map, robot odometry, and laser scans to find the robot's position in the world.
 
+![working particle filter](injection125percent.gif)
+
 ## Conceptual Overview
 ### Workflow
 ![System Diagram for Algorithm](system.png)

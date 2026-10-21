@@ -49,13 +49,13 @@ Another design choice we made was using the log weight instead of a normalized w
 
 One final design choice we had was deciding the values of our various standard deviations (sigma) and random injection values. While these were experimentally defined, a lot of the values make sense. For the hit box, we used a larger sigma (0.3) because the laser scans were really jumpy and moved around quite a bit. But for the particle locations, we used a much smaller standard deviation (0.01 + 0.05*(delta), delta being the difference in pose) because the odometry drift is much less noisy and it is based on the difference in pose. For the random injections, we started out with 5% and kept increasing until the particles were able to converge to the correct location (ended up with 12.5%). 
 
-![System Diagram for Algorithm](injection125percent.gif)
+![Particle filter with 12.5% random injection](injection125percent.gif)
 
 Particle filter implementation with 12.5 % random injection
 
 <br>
 
-![System Diagram for Algorithm](injection10percent.gif)
+![Particle filter with 10% random injection](injection10percent.gif)
 
 Particle filter implementation with 10% random injection
 <br>
