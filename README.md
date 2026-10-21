@@ -6,6 +6,7 @@ Making a particle filter that uses a given world map, robot odometry, and laser 
 
 ## Conceptual Overview
 ### Workflow
+System diagram shows key algorithmic steps and important functions are highlighted below. 
 ![System Diagram for Algorithm](system.png)
 
 ### 1. Initialize the Particle Cloud

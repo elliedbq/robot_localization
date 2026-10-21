@@ -47,7 +47,7 @@ At first, we tried to solely use the closest obstacle distance to try and have t
 
 Another design choice we made was using the log weight instead of a normalized weight when adding all the scans together and also adding a cap value to the scan data. We had a lot of nan problems, leading us to believe that the numbers we were multiplying together were just getting too small, so we decided to switch to the log weights. We also realized that one bad reading would disqualify the particle from the particle cloud, so the end cap helped protect against any noisy readings. 
 
-One final design choice we had was deciding the values of our various standard deviations (sigma) and random injection values. While these were experimentally defined, a lot of the values make sense. For the hit box, we used a larger sigma (0.3) because the laser scans were really jumpy and moved around quite a bit. But for the particle locations, we used a much smaller standard deviation (0.01 + 0.05*(delta), delta being the difference in pose) because the odometry drift is much less noisy and it is based on the difference in pose. For the random injections, we started out with 5% and kept increasing until the particles were able to converge to the correct location (ended up with 12.5%). 
+One final design choice we had was deciding the values of our various standard deviations (sigma) and random injection values. While these were experimentally defined, a lot of the values make sense. For the hit box, we used a larger sigma (0.3) because the laser scans were really jumpy and moved around quite a bit. But for the particle locations, we used a much smaller standard deviation (0.01 + 0.05*(delta), delta being the difference in pose) because the odometry drift is much less noisy and it is based on the difference in pose. For the random injections, we started out with 5% and kept increasing until the particles were able to converge to the correct location (ended up with 12.5%). We also changed our particle number, testing with 1000, and eventually lowering to 300, and still having it work. This was done to make it more computationally efficient. 
 
 ![Particle filter with 12.5% random injection](injection125percent.gif)
 
@@ -79,8 +79,8 @@ The testing of this system was completed in various stages and ways. The previou
 
 - `particle_localization_initial_recorded_test` - This bag has the implementation version where we first got log weights to work. However, the particles converge at different locations and the robot is not in the correct pose because we are taking into account the neighboring particles by adding their probability (in hindsight we should have multiplied the probability of each particle instead). 
 - `particle_localization_second_recorded_test` - This bag file has the implementation version where we started to change the sigma values and other relevant variables. We also got rid of the cluster probabilities being accounted for, focusing on the particle with the largest weight.
-final_take_random_injection_10percent - This bag file shows our final implementation and sigma values, changing the random injection percentage to 10. 
-- 'final_take_random_injection_12percent' - This bag file shows our final implementation and sigma values, changing random injection percentage to 12.5. This ended up working much better and converging faster than the 10% version. 
+- `final_take_random_injection_10percent` - This bag file shows our final implementation and sigma values, changing the random injection percentage to 10. 
+- `final_take_random_injection_12percent` - This bag file shows our final implementation and sigma values, changing random injection percentage to 12.5. This ended up working much better and converging faster than the 10% version. 
 
 Bagfiles can be found within the bags folder in the overall repo `robot_localization/bags`.
 
