@@ -4,7 +4,7 @@ Making a particle filter that uses a given world map, robot odometry, and laser 
 
 ## Conceptual Overview
 ### Workflow
-add picture? or wtv we write in report
+![System Diagram for Algorithm](system.png)
 
 ### 1. Initialize the Particle Cloud
 `initialize_particle_cloud()`
@@ -34,7 +34,7 @@ Using the particle with the highest confidence value (weight), approximate where
 Using the weights (probability) of each particle being correct position of the robot, resample the particles, adding a random injection of particles in case of a large convergence, rooms, or symmetrical obstacles.
 
 ### More Details
-Look at report: 
+Look at report: [report](report.pdf)
 
 ## How to Run
 

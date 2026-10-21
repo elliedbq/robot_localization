@@ -99,7 +99,7 @@ class ParticleFilter(Node):
         self.odom_frame = "odom"  # the name of the odometry coordinate frame
         self.scan_topic = "scan"  # the topic where we will get laser scans from
 
-        self.n_particles = 1000  # the number of particles to use
+        self.n_particles = 300  # the number of particles to use
 
         self.d_thresh = 0.2  # the amount of linear movement before performing an update
         self.a_thresh = (
@@ -315,8 +315,6 @@ class ParticleFilter(Node):
 
             p.x = p.x + math.cos(p.theta) * noisy_dxr - math.sin(p.theta) * noisy_dyr
             p.y = p.y + math.sin(p.theta) * noisy_dxr + math.cos(p.theta) * noisy_dyr
-            # p.theta = p.theta + noisy_dtheta
-            # will theta get too big? idk
             p.theta = math.atan2(
                 math.sin(p.theta + noisy_dtheta), math.cos(p.theta + noisy_dtheta)
             )
@@ -370,7 +368,7 @@ class ParticleFilter(Node):
         good_r = []
         good_theta = []
         for rad, the in zip(r, theta):
-            if math.isfinite(rad) and rad > 0:
+            if math.isfinite(rad) and rad > 0 and math.isfinite(the):
                 good_r.append(rad)
                 good_theta.append(the)
 
